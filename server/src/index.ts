@@ -1,24 +1,31 @@
 import { createLogger, serializeError } from "./utils/logger";
 import express, { NextFunction, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
+import redisClient from "./utils/redis";
+import { RedisRateLimitStore } from "./utils/redisRateLimitStore";
+import cors from "cors";
+import dotenv from "dotenv";
+
+import { loadConfig } from "./config";
+import { AppError } from "./errors/AppError";
+import { feeBumpHandler } from "./handlers/feeBump";
 import {
   getHorizonFailoverClient,
   initializeHorizonFailoverClient,
 } from "./horizon/failoverClient";
+import { apiKeyMiddleware } from "./middleware/apiKeys";
+import {
+  listApiKeysHandler,
+  upsertApiKeyHandler,
+  revokeApiKeyHandler,
+} from "./handlers/adminApiKeys";
+import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler";
+import { apiKeyRateLimit } from "./middleware/rateLimit";
+import { transactionStore } from "./workers/transactionStore";
 import {
   getLedgerMonitor,
   initializeLedgerMonitor,
 } from "./workers/ledgerMonitor";
-import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler";
-
-import { AppError } from "./errors/AppError";
-import { apiKeyMiddleware } from "./middleware/apiKeys";
-import { apiKeyRateLimit } from "./middleware/rateLimit";
-import cors from "cors";
-import dotenv from "dotenv";
-import { feeBumpHandler } from "./handlers/feeBump";
-import { loadConfig } from "./config";
-import rateLimit from "express-rate-limit";
-import { transactionStore } from "./workers/transactionStore";
 
 const logger = createLogger({ component: "server" });
 
@@ -32,6 +39,25 @@ if (config.horizonUrls.length > 0) {
   initializeHorizonFailoverClient(config);
 }
 
+// Use Redis-backed store for global IP rate limiting. Falls back to memory store if Redis unavailable.
+const windowSeconds = Math.max(1, Math.ceil(config.rateLimitWindowMs / 1000));
+let limiterStore: any = undefined;
+try {
+  // Prefer a maintained adapter if available: rate-limit-redis
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const RateLimitRedis = require("rate-limit-redis");
+  const RedisStore = RateLimitRedis.default || RateLimitRedis;
+  // Many adapters accept `client` for an ioredis instance and `expiry` or `windowMs`.
+  limiterStore = new RedisStore({ client: redisClient, expiry: windowSeconds });
+} catch (err) {
+  // Fallback to the lightweight custom store we added earlier
+  try {
+    limiterStore = new RedisRateLimitStore(redisClient, windowSeconds);
+  } catch (innerErr) {
+    console.error("Failed to initialize Redis rate-limit store:", innerErr);
+  }
+}
+
 const limiter = rateLimit({
   windowMs: config.rateLimitWindowMs,
   max: config.rateLimitMax,
@@ -41,6 +67,7 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  store: limiterStore,
 });
 
 const corsOptions = {
@@ -108,7 +135,7 @@ app.post(
   limiter,
   (req: Request, res: Response, next: NextFunction) => {
     feeBumpHandler(req, res, config, next);
-  }
+  },
 );
 
 app.post("/test/add-transaction", (req: Request, res: Response) => {
@@ -128,6 +155,11 @@ app.get("/test/transactions", (req: Request, res: Response) => {
   res.json({ transactions });
 });
 
+// Admin API keys management (minimal — secure these endpoints in production)
+app.get("/admin/api-keys", listApiKeysHandler);
+app.post("/admin/api-keys", upsertApiKeyHandler);
+app.delete("/admin/api-keys/:key", revokeApiKeyHandler);
+
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
@@ -140,7 +172,10 @@ if (config.horizonUrls.length > 0) {
     ledgerMonitor.start();
     logger.info("Ledger monitor worker started");
   } catch (error) {
-    logger.error({ ...serializeError(error) }, "Failed to start ledger monitor");
+    logger.error(
+      { ...serializeError(error) },
+      "Failed to start ledger monitor",
+    );
   }
 } else {
   logger.info("No Horizon URLs configured; ledger monitor disabled");
@@ -151,13 +186,15 @@ app.listen(PORT, () => {
   logger.info(
     {
       fee_payers_loaded: config.feePayerAccounts.length,
-      fee_payer_public_keys: config.feePayerAccounts.map((account) => account.publicKey),
+      fee_payer_public_keys: config.feePayerAccounts.map(
+        (account) => account.publicKey,
+      ),
       horizon_node_count: config.horizonUrls.length,
       horizon_nodes: config.horizonUrls,
       horizon_selection_strategy: config.horizonSelectionStrategy,
       port: PORT,
       url: `http://0.0.0.0:${PORT}`,
     },
-    "Fluid server started"
+    "Fluid server started",
   );
 });
