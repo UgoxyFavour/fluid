@@ -134,4 +134,70 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn load_config_happy_path_parses_env_and_defaults() {
+        // Required
+        std::env::set_var("FLUID_FEE_PAYER_SECRET", "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+
+        // Optional, but set to exercise parsing.
+        std::env::set_var("FLUID_ALLOWED_ORIGINS", "https://a.example, https://b.example");
+        std::env::set_var("FLUID_BASE_FEE", "150");
+        std::env::set_var("FLUID_FEE_MULTIPLIER", "1.5");
+        std::env::set_var("FLUID_RATE_LIMIT_MAX", "9");
+        std::env::set_var("FLUID_RATE_LIMIT_WINDOW_MS", "120000");
+        std::env::set_var("STELLAR_NETWORK_PASSPHRASE", "Test Network");
+        std::env::set_var("PORT", "4242");
+
+        // Horizon selection: configured list takes priority over legacy var.
+        std::env::set_var("STELLAR_HORIZON_URL", "https://legacy.example");
+        std::env::set_var("STELLAR_HORIZON_URLS", "https://h1.example,https://h2.example");
+        std::env::set_var("FLUID_HORIZON_SELECTION", "round_robin");
+
+        let (config, secrets) = load_config().expect("expected config to load");
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(config.allowed_origins, vec!["https://a.example", "https://b.example"]);
+        assert_eq!(config.base_fee, 150);
+        assert!((config.fee_multiplier - 1.5).abs() < f64::EPSILON);
+        assert_eq!(config.global_rate_limit_max, 9);
+        assert_eq!(config.global_rate_limit_window_ms, 120_000);
+        assert_eq!(config.network_passphrase, "Test Network");
+        assert_eq!(config.port, 4242);
+        assert_eq!(config.horizon_urls, vec!["https://h1.example", "https://h2.example"]);
+        assert!(matches!(
+            config.horizon_selection_strategy,
+            HorizonSelectionStrategy::RoundRobin
+        ));
+
+        std::env::remove_var("FLUID_FEE_PAYER_SECRET");
+        std::env::remove_var("FLUID_ALLOWED_ORIGINS");
+        std::env::remove_var("FLUID_BASE_FEE");
+        std::env::remove_var("FLUID_FEE_MULTIPLIER");
+        std::env::remove_var("FLUID_RATE_LIMIT_MAX");
+        std::env::remove_var("FLUID_RATE_LIMIT_WINDOW_MS");
+        std::env::remove_var("STELLAR_NETWORK_PASSPHRASE");
+        std::env::remove_var("PORT");
+        std::env::remove_var("STELLAR_HORIZON_URL");
+        std::env::remove_var("STELLAR_HORIZON_URLS");
+        std::env::remove_var("FLUID_HORIZON_SELECTION");
+    }
+
+    #[test]
+    fn load_config_uses_legacy_horizon_url_when_list_empty() {
+        std::env::set_var("FLUID_FEE_PAYER_SECRET", "SBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
+        std::env::remove_var("STELLAR_HORIZON_URLS");
+        std::env::set_var("STELLAR_HORIZON_URL", "https://legacy.example");
+        std::env::set_var("FLUID_HORIZON_SELECTION", "priority");
+
+        let (config, _) = load_config().expect("expected config to load");
+        assert_eq!(config.horizon_urls, vec!["https://legacy.example"]);
+        assert!(matches!(
+            config.horizon_selection_strategy,
+            HorizonSelectionStrategy::Priority
+        ));
+
+        std::env::remove_var("FLUID_FEE_PAYER_SECRET");
+        std::env::remove_var("STELLAR_HORIZON_URL");
+        std::env::remove_var("FLUID_HORIZON_SELECTION");
+    }
 }
