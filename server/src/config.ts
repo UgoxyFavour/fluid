@@ -1,5 +1,5 @@
-import { SignerPool } from "./signing";
 import StellarSdk from "@stellar/stellar-sdk";
+import { SignerPool } from "./signing";
 
 export type HorizonSelectionStrategy = "priority" | "round_robin";
 
@@ -7,8 +7,8 @@ export interface FeePayerAccount {
   publicKey: string;
   keypair: ReturnType<typeof StellarSdk.Keypair.fromSecret>;
   secretSource:
-  | { type: "env"; secret: string }
-  | { type: "vault"; secretPath: string };
+    | { type: "env"; secret: string }
+    | { type: "vault"; secretPath: string };
 }
 
 export interface VaultConfig {
@@ -54,14 +54,14 @@ export interface AlertingConfig {
   email?: AlertEmailConfig;
 }
 
-export function loadConfig (): Config {
+export function loadConfig(): Config {
   const baseFee = parseInt(process.env.FLUID_BASE_FEE || "100", 10);
   const feeMultiplier = parseFloat(process.env.FLUID_FEE_MULTIPLIER || "2.0");
   const networkPassphrase =
     process.env.STELLAR_NETWORK_PASSPHRASE ||
     "Test SDF Network ; September 2015";
   const configuredHorizonUrls = parseCommaSeparatedList(
-    process.env.STELLAR_HORIZON_URLS
+    process.env.STELLAR_HORIZON_URLS,
   );
   const legacyHorizonUrl = process.env.STELLAR_HORIZON_URL?.trim();
   const horizonUrls =
@@ -76,10 +76,12 @@ export function loadConfig (): Config {
       : "priority";
   const rateLimitWindowMs = parseInt(
     process.env.FLUID_RATE_LIMIT_WINDOW_MS || "60000",
-    10
+    10,
   );
   const rateLimitMax = parseInt(process.env.FLUID_RATE_LIMIT_MAX || "5", 10);
-  const allowedOrigins = parseCommaSeparatedList(process.env.FLUID_ALLOWED_ORIGINS);
+  const allowedOrigins = parseCommaSeparatedList(
+    process.env.FLUID_ALLOWED_ORIGINS,
+  );
   const maxXdrSize = parseInt(process.env.FLUID_MAX_XDR_SIZE || "10240", 10);
   const maxOperations = parseInt(process.env.FLUID_MAX_OPERATIONS || "100", 10);
   const vault = loadVaultConfig();
@@ -101,16 +103,16 @@ export function loadConfig (): Config {
   };
 
   const vaultSecretPaths = parseCommaSeparatedList(
-    process.env.FLUID_FEE_PAYER_VAULT_SECRET_PATHS
+    process.env.FLUID_FEE_PAYER_VAULT_SECRET_PATHS,
   );
   const vaultPublicKeys = parseCommaSeparatedList(
-    process.env.FLUID_FEE_PAYER_PUBLIC_KEYS
+    process.env.FLUID_FEE_PAYER_PUBLIC_KEYS,
   );
 
   if (vault && vaultSecretPaths.length > 0 && vaultPublicKeys.length > 0) {
     if (vaultSecretPaths.length !== vaultPublicKeys.length) {
       throw new Error(
-        "Vault mode requires FLUID_FEE_PAYER_VAULT_SECRET_PATHS and FLUID_FEE_PAYER_PUBLIC_KEYS to have the same number of entries"
+        "Vault mode requires FLUID_FEE_PAYER_VAULT_SECRET_PATHS and FLUID_FEE_PAYER_PUBLIC_KEYS to have the same number of entries",
       );
     }
 
@@ -122,7 +124,7 @@ export function loadConfig (): Config {
           type: "vault",
           secretPath: vaultSecretPaths[index],
         },
-      })
+      }),
     );
 
     const signerPool = new SignerPool(
@@ -132,20 +134,25 @@ export function loadConfig (): Config {
           account.secretSource.type === "vault"
             ? `vault:${account.secretSource.secretPath}`
             : account.secretSource.secret,
-      }))
+      })),
     );
 
     return {
       ...sharedConfig,
       feePayerAccounts,
       signerPool,
+      alerting: {
+        lowBalanceThresholdXlm: undefined,
+        checkIntervalMs: 60 * 60 * 1000,
+        cooldownMs: 6 * 60 * 60 * 1000,
+      },
     };
   }
 
   const secrets = parseCommaSeparatedList(process.env.FLUID_FEE_PAYER_SECRET);
   if (secrets.length === 0) {
     throw new Error(
-      "No fee payer secrets configured. Provide either Vault settings (VAULT_ADDR + token/approle + FLUID_FEE_PAYER_VAULT_SECRET_PATHS + FLUID_FEE_PAYER_PUBLIC_KEYS) or set FLUID_FEE_PAYER_SECRET for env-based development."
+      "No fee payer secrets configured. Provide either Vault settings (VAULT_ADDR + token/approle + FLUID_FEE_PAYER_VAULT_SECRET_PATHS + FLUID_FEE_PAYER_PUBLIC_KEYS) or set FLUID_FEE_PAYER_SECRET for env-based development.",
     );
   }
 
@@ -159,21 +166,16 @@ export function loadConfig (): Config {
     };
   });
 
-  const baseFee = parseInt(process.env.FLUID_BASE_FEE || "100", 10);
-  const feeMultiplier = parseFloat(process.env.FLUID_FEE_MULTIPLIER || "2.0");
-  const networkPassphrase =
-    process.env.STELLAR_NETWORK_PASSPHRASE ||
-    "Test SDF Network ; September 2015";
-  const horizonUrl = process.env.STELLAR_HORIZON_URL;
-  const rateLimitWindowMs = parsePositiveInt(
-    process.env.FLUID_RATE_LIMIT_WINDOW_MS,
-    60_000,
+  const signerPool = new SignerPool(
+    feePayerAccounts.map((account) => ({
+      keypair: account.keypair,
+      secret:
+        account.secretSource.type === "env"
+          ? account.secretSource.secret
+          : `vault:${account.secretSource.secretPath}`,
+    })),
   );
-  const rateLimitMax = parsePositiveInt(
-    process.env.FLUID_RATE_LIMIT_MAX,
-    5,
-  );
-  const allowedOrigins = parseAllowedOrigins(process.env.FLUID_ALLOWED_ORIGINS);
+
   const lowBalanceThresholdXlm = parseOptionalNumber(
     process.env.FLUID_LOW_BALANCE_THRESHOLD_XLM,
   );
@@ -191,13 +193,7 @@ export function loadConfig (): Config {
   return {
     ...sharedConfig,
     feePayerAccounts,
-    baseFee,
-    feeMultiplier,
-    networkPassphrase,
-    horizonUrl,
-    rateLimitWindowMs,
-    rateLimitMax,
-    allowedOrigins,
+    signerPool,
     alerting: {
       lowBalanceThresholdXlm,
       checkIntervalMs,
@@ -211,8 +207,7 @@ export function loadConfig (): Config {
 function loadAlertEmailConfig(): AlertEmailConfig | undefined {
   const host = process.env.FLUID_ALERT_SMTP_HOST?.trim();
   const from = process.env.FLUID_ALERT_EMAIL_FROM?.trim();
-  const to = process.env.FLUID_ALERT_EMAIL_TO
-    ?.split(",")
+  const to = process.env.FLUID_ALERT_EMAIL_TO?.split(",")
     .map((value) => value.trim())
     .filter(Boolean);
 
@@ -231,10 +226,7 @@ function loadAlertEmailConfig(): AlertEmailConfig | undefined {
   };
 }
 
-function parsePositiveInt(
-  value: string | undefined,
-  fallback: number,
-): number {
+function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
   }
@@ -263,15 +255,55 @@ function parseAllowedOrigins(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function parseCommaSeparatedList(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function loadVaultConfig(): VaultConfig | undefined {
+  const addr = process.env.VAULT_ADDR?.trim();
+  const token = process.env.VAULT_TOKEN?.trim();
+
+  if (!addr || !token) {
+    return undefined;
+  }
+
+  const appRole = {
+    roleId: process.env.VAULT_APPROLE_ROLE_ID?.trim(),
+    secretId: process.env.VAULT_APPROLE_SECRET_ID?.trim(),
+  };
+
+  return {
+    addr,
+    token,
+    appRole:
+      appRole.roleId && appRole.secretId
+        ? {
+            roleId: appRole.roleId,
+            secretId: appRole.secretId,
+          }
+        : undefined,
+    kvMount: process.env.VAULT_KV_MOUNT?.trim() || "secret",
+    kvVersion: parseInt(process.env.VAULT_KV_VERSION || "2", 10) as 1 | 2,
+    secretField: process.env.VAULT_SECRET_FIELD?.trim() || "secret",
+  };
+}
+
 // Round-robin counter (module-level, safe for single-threaded Node.js event loop)
 let rrIndex = 0;
 
-export function pickFeePayerAccount (config: Config): FeePayerAccount {
+export function pickFeePayerAccount(config: Config): FeePayerAccount {
   const snapshot = config.signerPool.getSnapshot();
   const nextPublicKey = snapshot[rrIndex % snapshot.length]?.publicKey;
   rrIndex = (rrIndex + 1) % snapshot.length;
   const account = config.feePayerAccounts.find(
-    (candidate) => candidate.publicKey === nextPublicKey
+    (candidate) => candidate.publicKey === nextPublicKey,
   );
 
   if (!account) {
