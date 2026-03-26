@@ -45,3 +45,13 @@ model WebhookDelivery {
   @@index([status])
   @@index([tenantId])
 }
+
+model SignerSecret {
+  id                String   @id @default(uuid())
+  publicKey         String   @unique
+  encryptedSecret   String
+  initializationVec String
+  authTag           String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

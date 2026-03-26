@@ -70,7 +70,13 @@ export default async function AdminDashboard() {
         </section>
 
         <section className="mt-6 space-y-6">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-3">
+            <Link
+              href="/admin/signers"
+              className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+            >
+              Manage signer pool
+            </Link>
             <Link
               href="/admin/transactions"
               className="inline-flex min-h-10 items-center justify-center rounded-full bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-700"

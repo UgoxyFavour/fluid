@@ -1,5 +1,5 @@
 type PrismaClientLike = {
-  [key: string]: unknown;
+  [key: string]: any;
 };
 
 type PrismaModule = {
