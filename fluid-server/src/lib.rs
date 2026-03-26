@@ -440,7 +440,11 @@ mod tests {
             .expect("empty vec should fit");
         let decorated = DecoratedSignature {
             hint: SignatureHint([0, 0, 0, 0]),
-            signature: Signature(vec![1, 2, 3, 4]),
+            signature: Signature(
+                vec![1u8, 2, 3, 4]
+                    .try_into()
+                    .expect("signature bytes should fit BytesM<64>"),
+            ),
         };
         let updated = push_signature(&signatures, decorated).unwrap();
         assert_eq!(updated.len(), 1);
