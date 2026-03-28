@@ -1,3 +1,13 @@
+# [1.3.0](https://github.com/Stellar-Fluid/fluid/compare/v1.2.0...v1.3.0) (2026-03-28)
+
+
+### Features
+
+* add admin price endpoint for oracle price inspection ([0889f39](https://github.com/Stellar-Fluid/fluid/commit/0889f391e275d1243d7c69103bc68a5ed834314f))
+* add PriceService with CoinGecko integration and caching ([a054bd5](https://github.com/Stellar-Fluid/fluid/commit/a054bd590595c8e3a49b6a6fb54105cb6eca0cd8))
+* integrate real-time price oracle into fee-bump handler ([4c316c3](https://github.com/Stellar-Fluid/fluid/commit/4c316c39d0106e7feebf1b6ac3a7e92193c2cf63))
+* interactive api playground in developer portal ([da0989c](https://github.com/Stellar-Fluid/fluid/commit/da0989ca759171c259774d14f729a85618bd9a51)), closes [#168](https://github.com/Stellar-Fluid/fluid/issues/168)
+
 # [1.2.0](https://github.com/Stellar-Fluid/fluid/compare/v1.1.0...v1.2.0) (2026-03-28)
 
 
