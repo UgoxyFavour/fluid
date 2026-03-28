@@ -1,11 +1,11 @@
 import { auth } from "@/auth";
 import Link from "next/link";
-import { WebhookSettingsManager } from "@/components/dashboard/WebhookSettingsManager";
-import { getWebhookSettingsPageData } from "@/lib/webhook-settings-data";
+import { PartnerCertificationManager } from "@/components/dashboard/PartnerCertificationManager";
+import { getPartnerPageData } from "@/lib/partners-data";
 
-export default async function AdminWebhooksPage() {
+export default async function AdminPartnersPage() {
   const session = await auth();
-  const { rows, source } = await getWebhookSettingsPageData();
+  const { partners, source } = await getPartnerPageData();
 
   return (
     <main className="min-h-screen bg-slate-100">
@@ -17,27 +17,17 @@ export default async function AdminWebhooksPage() {
                 Fluid Admin
               </p>
               <h1 className="mt-2 text-3xl font-bold text-slate-900">
-                Webhook Settings
+                Partner Certification
               </h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                Configure which webhook event types each tenant should receive before dispatch.
+                Review partnership applications and issue Fluid Certified Partner badges.
               </p>
             </div>
             <div className="flex items-center gap-4">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                <div className="font-medium text-slate-900">
-                  {session?.user?.email}
-                </div>
-                <div>
-                  {source === "live" ? "Live server data" : "Sample settings data"}
-                </div>
+                <div className="font-medium text-slate-900">{session?.user?.email}</div>
+                <div>{source === "live" ? "Live data" : "Sample data"}</div>
               </div>
-              <Link
-                href="/admin/webhooks/dlq"
-                className="inline-flex min-h-10 items-center justify-center rounded-full border border-sky-300 bg-sky-50 px-4 text-sm font-semibold text-sky-700 transition hover:border-sky-400 hover:bg-sky-100"
-              >
-                Dead-Letter Queue
-              </Link>
               <Link
                 href="/admin/dashboard"
                 className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
@@ -50,7 +40,7 @@ export default async function AdminWebhooksPage() {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <WebhookSettingsManager initialRows={rows} />
+        <PartnerCertificationManager initialPartners={partners} />
       </div>
     </main>
   );
