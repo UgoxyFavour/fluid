@@ -51,6 +51,7 @@ import {
 } from "./workers/ledgerMonitor";
 import { initializeIncidentMonitor } from "./workers/incidentMonitor";
 import { initializeTreasuryRefill } from "./workers/treasuryRefill";
+import { initializeDigestWorker } from "./workers/digestWorker";
 import { transactionStore } from "./workers/transactionStore";
 import { healthHandler } from "./handlers/health";
 import {
@@ -60,6 +61,10 @@ import {
   markAllReadHandler,
   notificationSseHandler,
 } from "./handlers/adminNotifications";
+import {
+  digestUnsubscribeHandler,
+  sendDigestNowHandler,
+} from "./handlers/digest";
 
 dotenv.config();
 
@@ -299,12 +304,16 @@ app.patch("/admin/notifications/:id/read", (req: Request, res: Response) => {
   void markReadHandler(req, res);
 });
 
-app.post(
-  "/stripe/webhook",
+app.post("/stripe/webhook",
   express.raw({ type: "application/json" }),
   stripeWebhookHandler,
 );
 app.post("/create-checkout-session", createCheckoutSessionHandler);
+
+// Daily digest
+app.get("/admin/digest/unsubscribe", digestUnsubscribeHandler);
+app.post("/admin/digest/unsubscribe", digestUnsubscribeHandler);
+app.post("/admin/digest/send-now", sendDigestNowHandler);
 
 app.use(notFoundHandler);
 app.use(createGlobalErrorHandler(slackNotifier));
@@ -314,6 +323,7 @@ const PORT = process.env.PORT || 3000;
 let ledgerMonitor: ReturnType<typeof initializeLedgerMonitor> | null = null;
 let balanceMonitor: ReturnType<typeof initializeBalanceMonitor> | null = null;
 let incidentMonitor: ReturnType<typeof initializeIncidentMonitor> | null = null;
+let digestWorker: ReturnType<typeof initializeDigestWorker> | null = null;
 let shuttingDown = false;
 let server: ReturnType<typeof app.listen> | null = null;
 
@@ -332,6 +342,7 @@ async function shutdown(signal: string): Promise<void> {
   ledgerMonitor?.stop();
   balanceMonitor?.stop();
   incidentMonitor?.stop();
+  digestWorker?.stop();
 
   if (server) {
     server.close(() => process.exit(0));
@@ -394,6 +405,17 @@ try {
   }
 } catch (error) {
   logger.error({ ...serializeError(error) }, "Failed to start treasury refill worker");
+}
+
+// Daily email digest worker
+try {
+  digestWorker = initializeDigestWorker();
+  if (digestWorker) {
+    digestWorker.start();
+    logger.info("Daily digest worker started");
+  }
+} catch (error) {
+  logger.error({ ...serializeError(error) }, "Failed to start daily digest worker");
 }
 
 server = app.listen(PORT, () => {
