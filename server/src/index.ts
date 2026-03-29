@@ -1,5 +1,6 @@
 import "dotenv/config";
 
+import dotenv from "dotenv";
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import swaggerUi from "swagger-ui-express";
@@ -36,7 +37,7 @@ import {
   initializeHorizonFailoverClient,
 } from "./horizon/failoverClient";
 import { apiKeyMiddleware } from "./middleware/apiKeys";
-import { globalErrorHandler, notFoundHandler } from "./middleware/errorHandler";
+import { createGlobalErrorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { apiKeyRateLimit } from "./middleware/rateLimit";
 import { tenantTierTxLimit } from "./middleware/txLimit";
 import { AlertService } from "./services/alertService";
@@ -60,8 +61,25 @@ import {
   markAllReadHandler,
   notificationSseHandler,
 } from "./handlers/adminNotifications";
+import {
+  deleteDeviceTokenHandler,
+  listDeviceTokensHandler,
+  registerDeviceTokenHandler,
+} from "./handlers/adminDeviceTokens";
+import {
+  SlackNotifier,
+  loadSlackNotifierOptionsFromEnv,
+} from "./services/slackNotifier";
+import { PagerDutyNotifier } from "./services/pagerDutyNotifier";
+import { initializeFcmNotifier } from "./services/fcmNotifier";
+import { initializeFeeManager } from "./services/feeManager";
+import { listTransactionsHandler } from "./handlers/adminTransactions";
+import { getSpendForecastHandler } from "./handlers/adminAnalytics";
+import { getFeeMultiplierHandler } from "./handlers/adminFeeMultiplier";
+import { estimateFeeHandler } from "./handlers/estimate";
 
 dotenv.config();
+const logger = createLogger({ component: "server" });
 
 const app = express();
 app.use(express.json());
@@ -75,6 +93,7 @@ app.get("/docs.json", (_req: Request, res: Response) => {
 });
 
 const config = loadConfig();
+const feeManager = initializeFeeManager(config);
 const slackNotifier = new SlackNotifier(loadSlackNotifierOptionsFromEnv());
 const pagerDutyNotifier = new PagerDutyNotifier();
 const fcmNotifier = initializeFcmNotifier();
@@ -214,7 +233,7 @@ app.post(
   tenantTierTxLimit,
   limiter,
   (req: Request, res: Response, next: NextFunction) => {
-    void feeBumpHandler(req, res, config, next);
+    void feeBumpHandler(req, res, next, config);
   },
 );
 
@@ -275,6 +294,9 @@ app.get("/admin/signers", listSignersHandler(config));
 app.post("/admin/signers", addSignerHandler(config));
 app.delete("/admin/signers/:publicKey", removeSignerHandler(config));
 app.get("/admin/prices", getPriceHandler);
+app.get("/admin/transactions", listTransactionsHandler);
+app.get("/admin/analytics/spend-forecast", getSpendForecastHandler(config));
+app.get("/admin/fee-multiplier", getFeeMultiplierHandler);
 app.get("/admin/device-tokens", listDeviceTokensHandler);
 app.post("/admin/device-tokens", registerDeviceTokenHandler);
 app.delete("/admin/device-tokens/:id", deleteDeviceTokenHandler);
@@ -305,6 +327,7 @@ app.post(
   stripeWebhookHandler,
 );
 app.post("/create-checkout-session", createCheckoutSessionHandler);
+app.post("/estimate", limiter, estimateFeeHandler(config));
 
 app.use(notFoundHandler);
 app.use(createGlobalErrorHandler(slackNotifier));
@@ -332,6 +355,7 @@ async function shutdown(signal: string): Promise<void> {
   ledgerMonitor?.stop();
   balanceMonitor?.stop();
   incidentMonitor?.stop();
+  feeManager.stop();
 
   if (server) {
     server.close(() => process.exit(0));
