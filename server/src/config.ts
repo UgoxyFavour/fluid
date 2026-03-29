@@ -84,6 +84,8 @@ export interface Config {
   maxOperations: number;
   stellarRpcUrl?: string;
   vault?: VaultConfig;
+  ipAllowlist: string[];
+  ipDenylist: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +268,9 @@ export function loadConfig(): Config {
     process.env.FLUID_SUPPORTED_ASSETS,
   );
 
+  const ipAllowlist = parseCommaSeparatedList(process.env.IP_ALLOWLIST);
+  const ipDenylist = parseCommaSeparatedList(process.env.IP_DENYLIST);
+
   const sharedConfig = {
     allowedOrigins,
     alerting: loadAlertingConfig(),
@@ -283,6 +288,8 @@ export function loadConfig(): Config {
     stellarRpcUrl: process.env.STELLAR_RPC_URL?.trim() || undefined,
     supportedAssets,
     vault,
+    ipAllowlist,
+    ipDenylist,
   };
 
   // ---- Vault mode ----------------------------------------------------------
