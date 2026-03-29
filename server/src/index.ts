@@ -88,17 +88,14 @@ import {
   listChainsHandler,
   updateChainHandler,
 } from "./handlers/adminChains";
-import { startChainRegistryHotReload, stopChainRegistryHotReload } from "./services/chainRegistryService";
-  deleteDeviceTokenHandler,
-  listDeviceTokensHandler,
-  registerDeviceTokenHandler,
-} from "./handlers/adminDeviceTokens";
 import {
-  SlackNotifier,
-  loadSlackNotifierOptionsFromEnv,
-} from "./services/slackNotifier";
-import { PagerDutyNotifier } from "./services/pagerDutyNotifier";
-import { initializeFcmNotifier } from "./services/fcmNotifier";
+  listFlaggedEventsHandler,
+  getFlaggedEventHandler,
+  updateFlaggedEventHandler,
+  getAnomalyStatsHandler,
+} from "./handlers/adminFlaggedEvents";
+import { startChainRegistryHotReload, stopChainRegistryHotReload } from "./services/chainRegistryService";
+import { anomalyDetectionWorker } from "./workers/anomalyDetectionWorker";
 import { initializeFeeManager } from "./services/feeManager";
 import { listTransactionsHandler } from "./handlers/adminTransactions";
 import { getSpendForecastHandler } from "./handlers/adminAnalytics";
@@ -398,6 +395,20 @@ app.get("/admin/digest/unsubscribe", digestUnsubscribeHandler);
 app.post("/admin/digest/unsubscribe", digestUnsubscribeHandler);
 app.post("/admin/digest/send-now", sendDigestNowHandler);
 
+// Anomaly detection and flagged events
+app.get("/admin/flagged-events", (req: Request, res: Response) => {
+  void listFlaggedEventsHandler(req, res);
+});
+app.get("/admin/flagged-events/:id", (req: Request, res: Response) => {
+  void getFlaggedEventHandler(req, res);
+});
+app.patch("/admin/flagged-events/:id", (req: Request, res: Response) => {
+  void updateFlaggedEventHandler(req, res);
+});
+app.get("/admin/anomaly-stats", (req: Request, res: Response) => {
+  void getAnomalyStatsHandler(req, res);
+});
+
 // Chain registry — supported network management (Phase 11)
 app.get("/admin/chains", (req: Request, res: Response) => {
   void listChainsHandler(req, res);
@@ -442,6 +453,7 @@ async function shutdown(signal: string): Promise<void> {
   digestWorker?.stop();
   feeManager.stop();
   stopChainRegistryHotReload();
+  anomalyDetectionWorker.stop();
 
   if (server) {
     server.close(() => process.exit(0));
@@ -552,6 +564,14 @@ try {
   startChainRegistryHotReload();
 } catch (error) {
   logger.error({ ...serializeError(error) }, "Failed to start chain registry hot-reload");
+}
+
+// Anomaly detection worker
+try {
+  anomalyDetectionWorker.start();
+  logger.info("Anomaly detection worker started");
+} catch (error) {
+  logger.error({ ...serializeError(error) }, "Failed to start anomaly detection worker");
 }
 
 server = app.listen(PORT, () => {
